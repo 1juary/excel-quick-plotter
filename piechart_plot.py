@@ -57,7 +57,8 @@ def render_pie_and_radial_chart(
     excel_start_row: Optional[int] = None,
 ) -> None:
     """
-    在传入的 Matplotlib Figure 上绘制南丁格尔玫瑰图与径向柱状图双图。
+    在传入的 Matplotlib Figure 上绘制径向柱状图（已移除南丁格尔玫瑰图）。
+    通过升序排序机制，确保最小最短的数据位于最内部，最大最长的位于最外部。
     """
     fig.clear()
 
@@ -73,7 +74,6 @@ def render_pie_and_radial_chart(
         return
 
     # 2. 提取类别标签与数据值
-    # 若大于等于2列，默认第1列为标签，第2列为数值；若只有1列，自动生成虚拟标签
     if data_df.shape[1] >= 2:
         raw_labels = data_df.iloc[:, 0]
         raw_values = data_df.iloc[:, 1]
@@ -81,7 +81,7 @@ def render_pie_and_radial_chart(
         raw_values = data_df.iloc[:, 0]
         raw_labels = [f"Item {i+1}" for i in range(len(raw_values))]
 
-    # 滤除缺失值并强转为数值，由于是饼图类需要滤除 <= 0 的非正数数据
+    # 滤除缺失值并强转为数值，由于极坐标类图表特征，需滤除 <= 0 的非正数数据
     numeric_values = coerce_numeric_series(raw_values)
     valid_mask = numeric_values.notna() & (numeric_values > 0)
 
@@ -103,17 +103,22 @@ def render_pie_and_radial_chart(
         else:
             clean_labels.append(str(l).strip())
 
+    # 将数据按数值大小进行升序排序
+    sorted_pairs = sorted(zip(filtered_values, clean_labels), key=lambda x: x[0])
+    filtered_values = [p[0] for p in sorted_pairs]
+    clean_labels = [p[1] for p in sorted_pairs]
+
     total = sum(filtered_values)
     percentages = [v / total * 100 for v in filtered_values]
 
-    # 3. 动态配置画布比例与间距（宽幅设计以容纳双图）
+    # 3. 动态配置画布比例与间距（针对单张极坐标图微调为近正方形布局）
     try:
-        fig.set_size_inches(13, 6.5, forward=True)
+        fig.set_size_inches(7.5, 6.8, forward=True)
     except Exception:
         pass
 
     try:
-        fig.subplots_adjust(wspace=0.35, bottom=0.22, top=0.85)
+        fig.subplots_adjust(bottom=0.22, top=0.80, left=0.1, right=0.9)
     except Exception:
         pass
 
@@ -129,37 +134,33 @@ def render_pie_and_radial_chart(
             label_text = f"{l}  {v:.1f}%"
         else:
             label_text = f"{l}  {v:.1f} ({p:.1f}%)"
-        legend_patches.append(mpatches.Patch(color=c, label=label_text))
+            legend_patches.append(mpatches.Patch(color=c, label=label_text))
 
     # ---------------------------------------------------
-    # 图1：南丁格尔玫瑰图
+    # 绘制唯一的极坐标子图：径向柱状图（内小外大）
     # ---------------------------------------------------
-    ax1 = fig.add_subplot(121, projection='polar')
+    ax = fig.add_subplot(111, projection='polar')
+    ax.set_theta_zero_location('S')
+    ax.set_theta_direction(1)
+
     widths = [v / total * 2 * np.pi for v in filtered_values]
+    ring_width = 2
+    # 升序排序后，半径随着索引单调递增，最小在最内圈，最大在最外圈
+    bottoms = np.arange(1, len(clean_labels) + 1) * 3 + 6
+    thetas = [w / 2 for w in widths]
 
-    angles = []
-    start = 0
-    for w in widths:
-        angles.append(start + w / 2)
-        start += w
-
-    max_val = max(filtered_values)
-    # 高度自适应缩放：最大柱体高度设为 10
-    bar_heights = [v / max_val * 10 for v in filtered_values]
-    bottom_offset = 3
-
-    bars1 = ax1.bar(
-        angles, bar_heights, width=widths, color=colors,
-        edgecolor='white', linewidth=1.5, bottom=bottom_offset
+    bars = ax.bar(
+        thetas, height=ring_width, width=widths, bottom=bottoms,
+        color=colors, edgecolor='white', linewidth=0.5
     )
 
-    ax1.set_axis_off()
-    ax1.set_title(
-        f"Nightingale Rose Chart\n(南丁格尔玫瑰图)\n_{sheet_name}", 
-        pad=20, fontsize=12, fontweight='bold'
+    ax.set_axis_off()
+    ax.set_title(
+        f"Radial Bar Chart\n_{sheet_name}", 
+        pad=15, fontsize=12, fontweight='bold'
     )
 
-    ax1.legend(
+    ax.legend(
         handles=legend_patches,
         loc='upper center', bbox_to_anchor=(0.5, -0.08),
         ncol=min(3, len(clean_labels)), fontsize=8, framealpha=0.9, edgecolor='#cccccc',
@@ -168,53 +169,7 @@ def render_pie_and_radial_chart(
     )
 
     # 注入元数据供鼠标 Hover 交互展示
-    for j, patch in enumerate(bars1.patches):
-        try:
-            setattr(
-                patch,
-                "_eqp_meta",
-                {
-                    "label": clean_labels[j],
-                    "value": filtered_values[j],
-                    "percentage": percentages[j],
-                    "type": "Rose Chart"
-                },
-            )
-        except Exception:
-            pass
-
-    # ---------------------------------------------------
-    # 图2：径向柱状图
-    # ---------------------------------------------------
-    ax2 = fig.add_subplot(122, projection='polar')
-    ax2.set_theta_zero_location('S')
-    ax2.set_theta_direction(1)
-
-    ring_width = 2
-    # 环状间距根据元素个数自适应堆叠
-    bottoms = np.arange(1, len(clean_labels) + 1) * 3 + 6
-    thetas = [w / 2 for w in widths]
-
-    bars2 = ax2.bar(
-        thetas, height=ring_width, width=widths, bottom=bottoms,
-        color=colors, edgecolor='white', linewidth=0.5
-    )
-
-    ax2.set_axis_off()
-    ax2.set_title(
-        f"Radial Bar Chart\n(径向柱状图)\n_{sheet_name}", 
-        pad=20, fontsize=12, fontweight='bold'
-    )
-
-    ax2.legend(
-        handles=legend_patches,
-        loc='upper center', bbox_to_anchor=(0.5, -0.08),
-        ncol=min(3, len(clean_labels)), fontsize=8, framealpha=0.9, edgecolor='#cccccc',
-        title="Shares" if not is_percentage_already else "Values", title_fontsize=8,
-        borderaxespad=0, handletextpad=0.8, labelspacing=0.4
-    )
-
-    for j, patch in enumerate(bars2.patches):
+    for j, patch in enumerate(bars.patches):
         try:
             setattr(
                 patch,
@@ -230,7 +185,7 @@ def render_pie_and_radial_chart(
             pass
 
     # ---------------------------------------------------
-    # 5. 基础交互：绑定鼠标悬浮查看扇区数据
+    # 5. 基础交互：绑定鼠标悬浮查看数据
     # ---------------------------------------------------
     try:
         import mplcursors
@@ -242,7 +197,7 @@ def render_pie_and_radial_chart(
             except Exception:
                 pass
 
-        artists = list(bars1.patches) + list(bars2.patches)
+        artists = list(bars.patches)
         if artists:
             cursor = mplcursors.cursor(artists, hover=True)
 

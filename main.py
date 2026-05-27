@@ -63,6 +63,7 @@ from scatter_plot_multi import render_multi_scatter_kde_chart
 from line_plot import render_line_chart
 from heatmap_plot import render_heatmap_chart, coerce_numeric_matrix
 from pareto_plot import render_pareto_chart
+from piechart_plot import render_pie_and_radial_chart  # 【仅新增此行：导入玫瑰图与径向柱状图模块】
 
 try:
     import pythoncom as _pythoncom
@@ -702,6 +703,7 @@ class FloatingToolWindow(QWidget):
         action_line = chart_menu.addAction("Line Plot (多行)")
         # 原有 action 之下
         action_pareto = chart_menu.addAction("Pareto (二八法则)")
+        action_pie = chart_menu.addAction("Pie / Radial")  # 【仅新增此行：图表菜单增加极坐标图项】
         
         action_box.triggered.connect(lambda: self._set_chart_type("box"))
         action_scatter.triggered.connect(lambda: self._set_chart_type("scatter"))
@@ -709,6 +711,7 @@ class FloatingToolWindow(QWidget):
         action_heatmap.triggered.connect(lambda: self._set_chart_type("heatmap"))
         action_line.triggered.connect(lambda: self._set_chart_type("line"))
         action_pareto.triggered.connect(lambda: self._set_chart_type("pareto"))
+        action_pie.triggered.connect(lambda: self._set_chart_type("pie"))  # 【仅新增此行：极坐标图切换绑定】
         
         self.chart_button.setMenu(chart_menu)
         self._apply_chart_visual()
@@ -857,11 +860,12 @@ class FloatingToolWindow(QWidget):
             "heatmap": "Heatmap ▾",
             "line": "Line ▾",
             "pareto": "Pareto ▾",  # 新增
+            "pie": "Pie ▾",  # 【仅新增此行：极坐标图文字映射】
         }
         self.chart_button.setText(text_map.get(self._chart_type, "图表 ▾"))
 
     def _set_chart_type(self, chart_type: str) -> None:
-        if chart_type not in ("box", "scatter", "multi", "heatmap", "line", "pareto"):
+        if chart_type not in ("box", "scatter", "multi", "heatmap", "line", "pareto", "pie"):  # 【修改此行：白名单追加 "pie"】
             return
         self._chart_type = chart_type
         self._apply_chart_visual()
@@ -1225,7 +1229,7 @@ class FloatingToolWindow(QWidget):
 
         def _copy_plot_to_clipboard(show_tip: bool = True) -> None:
             try:
-                # 【核心逻辑变更】抛弃由于截取 UI 导致的分辨率过低和变形
+                # 【核心逻辑变更】抛弃由于截取 UI 导致的分辨率过低 and 变形
                 # 直接调用 Matplotlib 渲染出高清无损、排版原生的图像到内存
                 buf = io.BytesIO()
                 # bbox_inches="tight" 能自动裁剪白边，dpi=250 保证 PPT 里看极致清晰
@@ -1317,7 +1321,7 @@ class FloatingToolWindow(QWidget):
                 _copy_plot_to_clipboard(show_tip=False)
                 
                 # 【修复核心】使用 QTimer 延时 100 毫秒弹出气泡
-                # 躲开 Matplotlib 的 button_release 和 motion 事件，防止气泡被瞬间秒杀
+                # 躲开 Matplotlib 的 button_release and motion 事件，防止气泡被瞬间秒杀
                 def show_delayed_tip():
                     try:
                         pos = QCursor.pos()
@@ -1383,7 +1387,7 @@ class FloatingToolWindow(QWidget):
                     # 2. 将高清图表静默保存到系统临时目录
                     canvas.figure.savefig(temp_path, format="png", dpi=250, bbox_inches="tight", facecolor="white")
 
-                    # 3. 封装拖拽数据 (同时塞入文件路径和图片数据，通吃所有软件)
+                    # 3. 封装拖拽数据 (同时塞入文件路径 and 图片数据，通吃所有软件)
                     drag = QDrag(canvas)
                     mime = QMimeData()
                     mime.setUrls([QUrl.fromLocalFile(temp_path)])
@@ -1446,6 +1450,13 @@ class FloatingToolWindow(QWidget):
                     sheet_name=meta.get("sheet_name", "Data"), 
                     excel_start_row=meta.get("excel_start_row")
                 )
+            elif self._chart_type == "pie":  # 【仅新增此分支：饼图/径向柱图渲染调用】
+                render_pie_and_radial_chart(
+                    fig,
+                    df,
+                    sheet_name=meta.get("sheet_name", "Data"),
+                    excel_start_row=meta.get("excel_start_row")
+                )
         except Exception as exc:
             fig.clear()
             ax = fig.add_subplot(111)
@@ -1453,7 +1464,7 @@ class FloatingToolWindow(QWidget):
             print(f"[UI] render failed: {exc}")
 
         try:
-            if self._chart_type != "box":
+            if self._chart_type not in ("box", "pie"):  # 【修改此行：防止 polar 极坐标图由于紧凑化布局导致边缘重叠】
                 fig.tight_layout()
         except Exception:
             pass
