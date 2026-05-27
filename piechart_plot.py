@@ -154,6 +154,20 @@ def render_pie_and_radial_chart(
         color=colors, edgecolor='white', linewidth=0.5
     )
 
+    # 【在径向柱状图的起点位置增加百分比数据标签，并固定保留一位小数】
+    for i, p in enumerate(percentages):
+        # 固定格式化为一位小数
+        pct_str = f"{p:.1f}%"
+        # 将纵向半径坐标定位在当前柱条正中心
+        r_pos = bottoms[i] + ring_width / 2
+        # 在起点（theta=0）偏左（负数弧度）的边缘生成水平标签，右对齐
+        ax.text(
+            -0.08, r_pos, pct_str,
+            ha='right', va='center',
+            fontsize=9, color='#333333',
+            fontweight='semibold'
+        )
+
     ax.set_axis_off()
     ax.set_title(
         f"Radial Bar Chart\n_{sheet_name}", 
@@ -168,7 +182,6 @@ def render_pie_and_radial_chart(
         borderaxespad=0, handletextpad=0.8, labelspacing=0.4
     )
 
-    # 注入元数据供鼠标 Hover 交互展示
     for j, patch in enumerate(bars.patches):
         try:
             setattr(
