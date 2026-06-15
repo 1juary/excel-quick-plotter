@@ -24,6 +24,7 @@ from PyQt5.QtGui import QDrag, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,  # 【已新增：导入 QComboBox 组件】
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -445,6 +446,48 @@ class ChartDashboardWindow(QWidget):
             QLineEdit:focus { border: 1px solid #3DC2EC; background: #FFFFFF; border-radius: 4px; }
         """)
 
+        # 【新增】右上角标签数量控制下拉框与文字包装
+        limit_widget = QWidget()
+        limit_layout = QHBoxLayout(limit_widget)
+        limit_layout.setContentsMargins(0, 0, 0, 0)
+        limit_layout.setSpacing(4)
+
+        # 【新增】“仅数值”模式勾选框（默认开启）
+        chk_val_only = QCheckBox("仅数值")
+        chk_val_only.setChecked(True)
+        chk_val_only.setCursor(Qt.PointingHandCursor)
+        chk_val_only.setStyleSheet("""
+            QCheckBox {
+                font-size: 11px; color: #2C3E50; margin-right: 6px;
+            }
+        """)
+
+        lbl_limit = QLabel("标签上限:")
+        lbl_limit.setStyleSheet("font-size: 11px; color: #7F8C8D; font-weight: normal;")
+
+        combo_limit = QComboBox()
+        combo_limit.addItems(["1", "2", "3", "4", "5", "10", "无限制"])
+        combo_limit.setItemData(0, 1)
+        combo_limit.setItemData(1, 2)
+        combo_limit.setItemData(2, 3)
+        combo_limit.setItemData(3, 4)
+        combo_limit.setItemData(4, 5)
+        combo_limit.setItemData(5, 10)
+        combo_limit.setItemData(6, 99999)
+        combo_limit.setCurrentIndex(1)  # 【默认选中第2项，即限制2个】
+        combo_limit.setCursor(Qt.PointingHandCursor)
+        combo_limit.setStyleSheet("""
+            QComboBox {
+                font-size: 11px; color: #2C3E50; background-color: #F8F9FA;
+                border: 1px solid #BDC3C7; border-radius: 4px; padding: 2px 4px;
+            }
+            QComboBox:hover { border: 1px solid #3DC2EC; background-color: #FFFFFF; }
+        """)
+
+        limit_layout.addWidget(chk_val_only)
+        limit_layout.addWidget(lbl_limit)
+        limit_layout.addWidget(combo_limit)
+
         # 【新增】单图删除按钮
         btn_remove_card = QToolButton()
         btn_remove_card.setText("×")
@@ -463,11 +506,86 @@ class ChartDashboardWindow(QWidget):
         btn_remove_card.clicked.connect(_remove_this_card)
 
         title_layout.addWidget(title_edit, 1)
+        title_layout.addWidget(limit_widget, 0)  # 【已新增：将标签设置组件添加至右上角】
         title_layout.addWidget(btn_remove_card, 0)
 
         vbox.addLayout(title_layout)
         vbox.addWidget(toolbar)
         vbox.addWidget(canvas, 1)
+
+        # 【新增】针对底层 mplcursors 的限制管理
+        cursor = getattr(canvas.figure, "_eqp_mplcursors_cursor", None)
+        if cursor is not None:
+            cursor._multiple = True  # 允许底层产生多个标签
+
+            def enforce_limit():
+                idx = combo_limit.currentIndex()
+                max_val = combo_limit.itemData(idx)
+                if max_val is None:
+                    max_val = 2
+                # FIFO 队列式清除多余的老标签
+                while len(cursor.selections) > max_val:
+                    cursor.remove_selection(cursor.selections[0])
+                try:
+                    canvas.draw_idle()
+                except Exception:
+                    pass
+
+            # 解析并格式化标签：只提取 Value 部分
+            def on_add(sel):
+                orig = getattr(sel.annotation, "_eqp_orig_text", None)
+                if orig is None:
+                    orig = sel.annotation.get_text()
+                    sel.annotation._eqp_orig_text = orig
+
+                if chk_val_only.isChecked():
+                    simplified = orig
+                    if orig:
+                        lines = orig.strip().split('\n')
+                        found = False
+                        for line in lines:
+                            line_lower = line.lower()
+                            for prefix in ['y=', 'y:', 'value=', 'value:', 'val=', 'val:']:
+                                idx = line_lower.find(prefix)
+                                if idx != -1:
+                                    simplified = line[idx + len(prefix):].strip()
+                                    found = True
+                                    break
+                            if found:
+                                break
+                        # 如果没有找到带 y 的标识，且包含多行（通常最后一行即数值）
+                        if not found and len(lines) > 1:
+                            last_line = lines[-1].strip()
+                            if '=' in last_line:
+                                parts = last_line.split('=', 1)
+                                if len(parts) > 1:
+                                    simplified = parts[1].strip()
+                            elif ':' in last_line:
+                                parts = last_line.split(':', 1)
+                                if len(parts) > 1:
+                                    simplified = parts[1].strip()
+                            else:
+                                simplified = last_line
+                    sel.annotation.set_text(simplified)
+                else:
+                    sel.annotation.set_text(orig)
+
+                enforce_limit()
+
+            # “仅数值”勾选状态切换时重绘已有标签
+            def on_toggle_val_only():
+                for sel in list(cursor.selections):
+                    on_add(sel)
+                try:
+                    canvas.draw_idle()
+                except Exception:
+                    pass
+
+            # 连接标签创建信号和下拉框切换信号，动态约束数量
+            cursor.connect("add", on_add)
+            combo_limit.currentIndexChanged.connect(enforce_limit)
+            chk_val_only.stateChanged.connect(on_toggle_val_only)
+            enforce_limit()
 
         row = self.chart_count // self.max_columns
         col = self.chart_count % self.max_columns
