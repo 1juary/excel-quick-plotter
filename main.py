@@ -65,6 +65,7 @@ from line_plot import render_line_chart
 from heatmap_plot import render_heatmap_chart, coerce_numeric_matrix
 from pareto_plot import render_pareto_chart
 from piechart_plot import render_pie_and_radial_chart  # 【仅新增此行：导入玫瑰图与径向柱状图模块】
+from trend_plot import render_paired_trend_chart  # 【新增：导入单因子多阶段趋势分析模块】
 
 try:
     import pythoncom as _pythoncom
@@ -822,6 +823,7 @@ class FloatingToolWindow(QWidget):
         # 原有 action 之下
         action_pareto = chart_menu.addAction("Pareto (二八法则)")
         action_pie = chart_menu.addAction("Pie / Radial")  # 【仅新增此行：图表菜单增加极坐标图项】
+        action_trend = chart_menu.addAction("Trend (单因子多阶段)")  # 【新增：趋势图菜单项】
         
         action_box.triggered.connect(lambda: self._set_chart_type("box"))
         action_scatter.triggered.connect(lambda: self._set_chart_type("scatter"))
@@ -830,6 +832,7 @@ class FloatingToolWindow(QWidget):
         action_line.triggered.connect(lambda: self._set_chart_type("line"))
         action_pareto.triggered.connect(lambda: self._set_chart_type("pareto"))
         action_pie.triggered.connect(lambda: self._set_chart_type("pie"))  # 【仅新增此行：极坐标图切换绑定】
+        action_trend.triggered.connect(lambda: self._set_chart_type("trend"))  # 【新增：趋势图菜单触发绑定】
         
         self.chart_button.setMenu(chart_menu)
         self._apply_chart_visual()
@@ -979,11 +982,12 @@ class FloatingToolWindow(QWidget):
             "line": "Line ▾",
             "pareto": "Pareto ▾",  # 新增
             "pie": "Pie ▾",  # 【仅新增此行：极坐标图文字映射】
+            "trend": "Trend ▾",  # 【新增：趋势图文字映射】
         }
         self.chart_button.setText(text_map.get(self._chart_type, "图表 ▾"))
 
     def _set_chart_type(self, chart_type: str) -> None:
-        if chart_type not in ("box", "scatter", "multi", "heatmap", "line", "pareto", "pie"):  # 【修改此行：白名单追加 "pie"】
+        if chart_type not in ("box", "scatter", "multi", "heatmap", "line", "pareto", "pie", "trend"):  # 【修改此行：白名单追加 "trend"】
             return
         self._chart_type = chart_type
         self._apply_chart_visual()
@@ -1571,6 +1575,14 @@ class FloatingToolWindow(QWidget):
             elif self._chart_type == "pie":  # 【仅新增此分支：饼图/径向柱图渲染调用】
                 render_pie_and_radial_chart(
                     fig,
+                    df,
+                    sheet_name=meta.get("sheet_name", "Data"),
+                    excel_start_row=meta.get("excel_start_row")
+                )
+            elif self._chart_type == "trend":  # 【新增：单因子多阶段趋势图渲染调用】
+                ax = fig.add_subplot(111)
+                render_paired_trend_chart(
+                    ax,
                     df,
                     sheet_name=meta.get("sheet_name", "Data"),
                     excel_start_row=meta.get("excel_start_row")
