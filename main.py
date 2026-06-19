@@ -370,6 +370,7 @@ class ChartDashboardWindow(QWidget):
         settings.setValue("last_export_dir", folder)
 
         saved_count = 0
+        skipped_count = 0
         # 遍历网格中的所有卡片
         for i in range(self.grid_layout.count()):
             item = self.grid_layout.itemAt(i)
@@ -379,6 +380,12 @@ class ChartDashboardWindow(QWidget):
             card = item.widget()
             title_edit = card.findChild(QLineEdit)
             canvas = card.findChild(FigureCanvas)
+            chk_export = card.findChild(QCheckBox, "exportCheckbox")
+
+            # 跳过未勾选"导出"的卡片
+            if chk_export and not chk_export.isChecked():
+                skipped_count += 1
+                continue
 
             if title_edit and canvas:
                 # 提取标题并过滤掉不能作为文件名的非法字符
@@ -402,7 +409,10 @@ class ChartDashboardWindow(QWidget):
                 except Exception as e:
                     print(f"Failed to save {filepath}: {e}")
 
-        QToolTip.showText(QCursor.pos(), f"✅ 成功导出 {saved_count} 张图表！")
+        if skipped_count > 0:
+            QToolTip.showText(QCursor.pos(), f"✅ 导出 {saved_count} 张，跳过 {skipped_count} 张（未勾选）")
+        else:
+            QToolTip.showText(QCursor.pos(), f"✅ 成功导出 {saved_count} 张图表！")
 
     def add_chart(self, canvas, toolbar, meta, chart_type):
         """将生成的图表添加到网格中"""
@@ -489,6 +499,18 @@ class ChartDashboardWindow(QWidget):
         limit_layout.addWidget(lbl_limit)
         limit_layout.addWidget(combo_limit)
 
+        # 【新增】批量导出勾选框（默认选中）
+        chk_export = QCheckBox("导出")
+        chk_export.setObjectName("exportCheckbox")
+        chk_export.setChecked(True)
+        chk_export.setCursor(Qt.PointingHandCursor)
+        chk_export.setToolTip("批量导出时是否包含此图表")
+        chk_export.setStyleSheet("""
+            QCheckBox {
+                font-size: 11px; color: #2C3E50; margin-right: 2px;
+            }
+        """)
+
         # 【新增】单图删除按钮
         btn_remove_card = QToolButton()
         btn_remove_card.setText("×")
@@ -508,6 +530,7 @@ class ChartDashboardWindow(QWidget):
 
         title_layout.addWidget(title_edit, 1)
         title_layout.addWidget(limit_widget, 0)  # 【已新增：将标签设置组件添加至右上角】
+        title_layout.addWidget(chk_export, 0)
         title_layout.addWidget(btn_remove_card, 0)
 
         vbox.addLayout(title_layout)

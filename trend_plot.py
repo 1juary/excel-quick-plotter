@@ -4,35 +4,11 @@ from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 from typing import Optional
 
-from numeric_coercion import coerce_numeric_series
-
-def _is_blank_cell(value) -> bool:
-    if value is None:
-        return True
-    try:
-        if pd.isna(value):
-            return True
-    except Exception:
-        pass
-    if isinstance(value, str) and value.strip() == "":
-        return True
-    return False
-
-def _is_numeric_type_cell(value) -> bool:
-    if isinstance(value, bool):
-        return False
-    return isinstance(value, (int, float, np.number))
-
-def _detect_header_row(df: pd.DataFrame) -> bool:
-    if df is None or df.shape[0] == 0 or df.shape[1] == 0:
-        return False
-    first_row = df.iloc[0, :].tolist()
-    for cell in first_row:
-        if _is_blank_cell(cell):
-            continue
-        if not _is_numeric_type_cell(cell):
-            return True
-    return False
+from numeric_coercion import (
+    coerce_numeric_series,
+    detect_header_row as _detect_header_row,
+    is_blank_cell as _is_blank_cell,
+)
 
 def render_paired_trend_chart(
     ax: Axes,

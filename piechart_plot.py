@@ -5,43 +5,15 @@ from matplotlib.figure import Figure
 from typing import Optional
 
 try:
-    from numeric_coercion import coerce_numeric_series
+    from numeric_coercion import (
+        coerce_numeric_series,
+        detect_header_row as _detect_header_row,
+        is_blank_cell as _is_blank_cell,
+    )
 except ImportError:
     # 兼容性 Fallback：若 numeric_coercion 模块未处于 Python 环境变量下
     def coerce_numeric_series(series: pd.Series) -> pd.Series:
         return pd.to_numeric(series, errors='coerce')
-
-
-def _is_blank_cell(value) -> bool:
-    if value is None:
-        return True
-    try:
-        if pd.isna(value):
-            return True
-    except Exception:
-        pass
-    if isinstance(value, str) and value.strip() == "":
-        return True
-    return False
-
-
-def _is_numeric_type_cell(value) -> bool:
-    if isinstance(value, bool):
-        return False
-    return isinstance(value, (int, float, np.number))
-
-
-def _detect_header_row(df: pd.DataFrame) -> bool:
-    if df is None or df.shape[0] == 0 or df.shape[1] == 0:
-        return False
-
-    first_row = df.iloc[0, :].tolist()
-    for cell in first_row:
-        if _is_blank_cell(cell):
-            continue
-        if not _is_numeric_type_cell(cell):
-            return True
-    return False
 
 
 def _render_empty_placeholder(fig: Figure, message: str) -> None:
